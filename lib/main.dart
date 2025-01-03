@@ -5,6 +5,7 @@ import 'package:flutter_notes_app/controllers/note_controller.dart';
 import 'package:flutter_notes_app/controllers/planner_controller.dart';
 import 'package:flutter_notes_app/controllers/theme_controller.dart';
 import 'package:flutter_notes_app/midlewares/route_guard.dart';
+import 'package:flutter_notes_app/screens/habits/habit_detail.dart';
 import 'package:flutter_notes_app/screens/habits/habit_view.dart';
 import 'package:flutter_notes_app/screens/home_screen.dart';
 import 'package:flutter_notes_app/screens/login_screen.dart';
@@ -76,6 +77,11 @@ class MyApp extends StatelessWidget {
         GetPage(
           name: '/habits',
           page: () => HabitView(),
+          middlewares: [RouteGuard()],
+        ),
+          GetPage(
+          name: '/habits/detail',
+          page: () => HabitDetailView(habit: Get.arguments),
           middlewares: [RouteGuard()],
         ),
       ],

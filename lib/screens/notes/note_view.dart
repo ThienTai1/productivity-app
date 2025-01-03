@@ -34,16 +34,6 @@ class _NotesScreenState extends State<NotesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('My Notes'),
-        // actions: [
-        //   IconButton(
-        //     icon: Icon(Icons.logout),
-        //     onPressed: () {
-        //       _authController.logout();
-        //       _noteController.notes.clear();
-        //       Get.offAllNamed('/login');
-        //     },
-        //   ),
-        // ],
       ),
       drawer: AppDrawer(),
       body: Obx(() => GridView.builder(
@@ -94,7 +84,7 @@ class _NotesScreenState extends State<NotesScreen> {
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue,
+                color: const Color.fromRGBO(255, 234, 1, 1),
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(12),
                   topRight: Radius.circular(12),

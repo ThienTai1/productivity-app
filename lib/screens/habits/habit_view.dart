@@ -1,16 +1,45 @@
+
 import 'package:flutter/material.dart';
-import 'package:flutter_notes_app/screens/habits/add_habit_view.dart';
-import 'package:get/get.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_notes_app/controllers/auth_controller.dart';
 import 'package:flutter_notes_app/controllers/habit_controller.dart';
 import 'package:flutter_notes_app/models/habit.dart';
+import 'package:flutter_notes_app/screens/habits/add_habit_view.dart';
+import 'package:flutter_notes_app/widgets/app_drawer.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
-import 'package:flutter_notes_app/controllers/auth_controller.dart';
 
+class HabitView extends StatefulWidget {
+  @override
+  State<HabitView> createState() => _HabitViewState();
+}
 
-class HabitView extends StatelessWidget {
+class _HabitViewState extends State<HabitView> {
   final _habitController = Get.find<HabitController>();
   final _authController = Get.find<AuthController>();
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserHabits();
+
+      // Reload habits when app resumes
+      SystemChannels.lifecycle.setMessageHandler((msg) {
+        if (msg == AppLifecycleState.resumed.toString()) {
+          _loadUserHabits();
+        }
+        return Future.value(msg);
+      });
+    });
+  }
+
+  void _loadUserHabits() {
+    if (_authController.currentUser.value?.id != null) {
+      _habitController.loadUserHabits(_authController.currentUser.value!.id!);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,8 +47,8 @@ class HabitView extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('My Habits'),
-          bottom: TabBar(
+          title: const Text('My Habits'),
+          bottom: const TabBar(
             tabs: [
               Tab(text: 'Active'),
               Tab(text: 'Completed'),
@@ -27,17 +56,15 @@ class HabitView extends StatelessWidget {
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.add),
-              onPressed: () {
-                // TODO: Navigate to add habit screen
-                Get.to(() => HabitAddView());
-              },
+              icon: const Icon(Icons.add),
+              onPressed: () => Get.to(HabitAddView()),
             ),
           ],
         ),
+        drawer: AppDrawer(),
         body: Obx(
-          () => _habitController.isLoading.value
-              ? Center(child: CircularProgressIndicator())
+          () => _habitController.isLoading
+              ? const Center(child: CircularProgressIndicator())
               : TabBarView(
                   children: [
                     _buildActiveHabits(),
@@ -51,16 +78,29 @@ class HabitView extends StatelessWidget {
 
   Widget _buildActiveHabits() {
     return Obx(() {
-      final activeHabits = _habitController.activeHabits;
-      if (activeHabits.isEmpty) {
+      if (_habitController.activeHabits.isEmpty) {
         return Center(
-          child: Text('No active habits. Create one to get started!'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.sentiment_neutral, size: 48),
+              const SizedBox(height: 16),
+              const Text('No active habits yet'),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => Get.to(HabitAddView()),
+                child: const Text('Create your first habit'),
+              ),
+            ],
+          ),
         );
       }
+
       return ListView.builder(
-        itemCount: activeHabits.length,
+        padding: const EdgeInsets.all(8),
+        itemCount: _habitController.activeHabits.length,
         itemBuilder: (context, index) {
-          return _buildHabitCard(activeHabits[index]);
+          return _buildHabitCard(_habitController.activeHabits[index]);
         },
       );
     });
@@ -68,110 +108,140 @@ class HabitView extends StatelessWidget {
 
   Widget _buildCompletedHabits() {
     return Obx(() {
-      final completedHabits = _habitController.completedHabits;
-      if (completedHabits.isEmpty) {
-        return Center(
-          child: Text('No completed habits yet. Keep going!'),
+      if (_habitController.completedHabits.isEmpty) {
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.emoji_events_outlined, size: 48),
+              SizedBox(height: 16),
+              Text('No completed habits yet'),
+              SizedBox(height: 8),
+              Text('Keep going with your active habits!'),
+            ],
+          ),
         );
       }
+
       return ListView.builder(
-        itemCount: completedHabits.length,
+        padding: const EdgeInsets.all(8),
+        itemCount: _habitController.completedHabits.length,
         itemBuilder: (context, index) {
-          return _buildHabitCard(completedHabits[index]);
+          return _buildHabitCard(
+            _habitController.completedHabits[index],
+            isCompleted: true,
+          );
         },
       );
     });
   }
 
+  Widget _buildHabitCard(Habit habit, {bool isCompleted = false}) {
+    return Obx(() {
+      final progress = _habitController.progress[habit.id] ?? 0.0;
+      final isCompletedToday =
+          _habitController.completedToday[habit.id] ?? false;
+      final isCompleted = habit.completedDates.length >= habit.targetDays;
+      final currentHabit = _habitController.habits
+                  .firstWhereOrNull((h) => h.id == habit.id);
 
-  Widget _buildHabitCard(Habit habit) {
-    final progress = _habitController.getProgressPercentage(habit);
-    final isCompletedToday = _habitController.isCompletedToday(habit);
-
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      return GestureDetector(
+          onTap: () {
+            Get.toNamed('/habits/detail', arguments: habit);
+          },
+          child: Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        habit.title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              currentHabit!.title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              currentHabit.description,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: 4),
+                      CircularPercentIndicator(
+                        radius: 30,
+                        lineWidth: 5,
+                        percent: progress,
+                        center: Text('${(progress * 100).toInt()}%'),
+                        progressColor: Theme.of(context).primaryColor,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
                       Text(
-                        habit.description,
+                      '${currentHabit.completedDates.length}/${currentHabit.targetDays} days',
                         style: TextStyle(
                           color: Colors.grey[600],
                         ),
                       ),
+                      if (!isCompleted)
+                        ElevatedButton.icon(
+                          icon: Icon(
+                            isCompletedToday ? Icons.check_circle : Icons.check,
+                          ),
+                          label: Text(
+                            isCompletedToday ? 'Completed' : 'Mark Complete',
+                          ),
+                          onPressed: isCompletedToday
+                              ? () => _habitController.unmarkCompletion(
+                                    habit.id!,
+                                    DateTime.now(),
+                              )
+                              : () => _habitController.markCompletion(
+                                    habit.id!,
+                                    DateTime.now(),
+                                  ),
+                          style: ElevatedButton.styleFrom(
+                            // backgroundColor:
+                            //     isCompletedToday ? Colors.grey : null,
+                          ),
+                        ),
                     ],
                   ),
-                ),
-                CircularPercentIndicator(
-                  radius: 30,
-                  lineWidth: 5,
-                  percent: progress,
-                  center: Text('${(progress * 100).toInt()}%'),
-                  progressColor: Theme.of(Get.context!).primaryColor,
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${habit.completedDates.length}/${habit.targetDays} days',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                  ),
-                ),
-                if (!habit.isCompleted)
-                  ElevatedButton.icon(
-                    icon: Icon(
-                      isCompletedToday ? Icons.check_circle : Icons.check,
-                    ),
-                    label: Text(
-                      isCompletedToday ? 'Completed' : 'Mark Complete',
-                    ),
-                    onPressed: isCompletedToday
-                        ? null
-                        : () => _habitController.markHabitCompleted(habit.id!),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isCompletedToday ? Colors.grey : null,
+                  const SizedBox(height: 8),
+                  Text(
+                    'Start date: ${DateFormat('MMM dd, yyyy').format(currentHabit.startDate)}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
-              ],
-            ),
-            SizedBox(height: 8),
-            FutureBuilder<int>(
-              future: _habitController.getCurrentStreak(habit.id!),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return SizedBox();
-                return Text(
-                  'Current streak: ${snapshot.data} days',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
+                  Text(
+                    'End date: ${DateFormat('MMM dd, yyyy').format(currentHabit.endDate!)}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                );
-              },
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
-    );
+          ));
+    });
   }
 }

@@ -153,11 +153,6 @@ class _PlannerScreenState extends State<PlannerScreen> {
     }
   }
 
-  String _formatTime(DateTime date) {
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
 
   Widget _buildPlannerCard(Planner planner) {
     return Card(
@@ -174,6 +169,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
           planner.title,
           style: TextStyle(
             decoration: planner.isCompleted ? TextDecoration.lineThrough : null,
+            fontWeight: FontWeight.bold,
           ),
         ),
         subtitle: Column(

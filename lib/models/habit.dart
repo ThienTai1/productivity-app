@@ -35,7 +35,13 @@ class Habit {
     };
   }
 
-  factory Habit.fromMap(Map<String, dynamic> map) {
+  @override
+  String toString() {
+    return 'Habit(id: $id, userId: $userId, title: $title, description: $description, startDate: $startDate, '
+        'endDate: $endDate, completedDates: $completedDates, targetDays: $targetDays, isCompleted: $isCompleted)';
+  }
+
+  factory Habit.fromMap(Map<String, dynamic> map, List<DateTime> completedDates) {
     List<DateTime> parseCompletedDates(String? datesStr) {
       if (datesStr == null || datesStr.isEmpty) return [];
       return datesStr
@@ -55,5 +61,7 @@ class Habit {
       isCompleted: map['isCompleted'] == 1,
       completedDates: parseCompletedDates(map['completedDates']),
     );
+
+    
   }
 }

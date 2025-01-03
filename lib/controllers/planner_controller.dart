@@ -1,7 +1,6 @@
 import 'package:flutter_notes_app/models/planner.dart';
 import 'package:flutter_notes_app/services/database_service.dart';
 import 'package:get/get.dart';
-import 'package:get/get_state_manager/src/simple/get_controllers.dart';
 
 class PlannerController extends GetxController {
   final _db = DatabaseService.instance;

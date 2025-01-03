@@ -58,6 +58,13 @@ class HomeScreen extends StatelessWidget {
                 description: 'Organize your schedule',
                 onTap: () => Get.toNamed('/planner'),
               ),
+              SizedBox(height: 20),
+              _buildFeatureCard(
+                icon: Icons.task,
+                title: 'Habits',
+                description: 'Track your habits',
+                onTap: () => Get.toNamed('/habits'),
+              ),
             ],
           ),
         ),

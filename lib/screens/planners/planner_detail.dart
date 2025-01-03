@@ -5,9 +5,9 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 class PlannerDetailScreen extends StatelessWidget {
-  final Planner planner;
   final PlannerController _plannerController = Get.find<PlannerController>();
 
+  final Planner planner;
   PlannerDetailScreen({required this.planner});
 
   @override

@@ -25,7 +25,7 @@ class DatabaseService {
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), "notes.db");
     // print('Database Path: $path');
-    await deleteDatabase(path);
+    // await deleteDatabase(path);
     return await openDatabase(
       path,
       version: 1, // Tăng phiên bản từ 1 lên 2
@@ -63,7 +63,7 @@ class DatabaseService {
         description TEXT NOT NULL,
         date TEXT NOT NULL,
         isCompleted INTEGER NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users (id)
+        FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
 
@@ -77,7 +77,8 @@ class DatabaseService {
         startDate TEXT NOT NULL,
         endDate TEXT,
         isCompleted INTEGER NOT NULL CHECK (isCompleted IN (0, 1)),
-        FOREIGN KEY (userId) REFERENCES users (id)
+        completedDates TEXT,
+        FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
 
@@ -86,7 +87,7 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         habitId INTEGER NOT NULL,
         completedDate TEXT NOT NULL,
-        FOREIGN KEY (habitId) REFERENCES habits (id)
+        FOREIGN KEY (habitId) REFERENCES habits (id) ON DELETE CASCADE
       )
     ''');
   }
@@ -201,66 +202,9 @@ class DatabaseService {
   //================
   /*HABIT OPERATIONS */
   //================
-  Future<Habit> createHabit(Habit habit) async {
-    final db = await instance.database;
-    final id = await db.insert('habits', habit.toMap());
-    return habit..id = id;
-  }
-
-  Future<List<Habit>> getHabits(int userId) async {
-    final db = await instance.database;
-    final maps = await db.query(
-      'habits',
-      where: 'userId = ?',
-      whereArgs: [userId],
-      orderBy: 'startDate DESC',
-    );
-    return maps.map((map) => Habit.fromMap(map)).toList();
-  }
-
-  Future<int> updateHabit(Habit habit) async {
-    final db = await instance.database;
-    return db.update(
-      'habits',
-      habit.toMap(),
-      where: 'id = ?',
-      whereArgs: [habit.id],
-    );
-  }
-
-  Future<int> deleteHabit(int id) async {
-    final db = await instance.database;
-    return await db.delete(
-      'habits',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> markHabitCompleted( int habitId) async {
-    final today = DateTime.now();
-    Database db = await instance.database;
-    final formattedDate = today.toIso8601String();
-
-    // Kiểm tra nếu ngày đã được đánh dấu
-    final existingRecord = await db.query(
-      'habit_completed_dates',
-      where: 'habitId = ? AND completedDate = ?',
-      whereArgs: [habitId, formattedDate],
-    );
-
-    if (existingRecord.isEmpty) {
-      // Chỉ thêm nếu ngày chưa được đánh dấu
-      await db.insert('habit_completed_dates', {
-        'habitId': habitId,
-        'completedDate': formattedDate,
-      });
-    }
-  }
-
   Future<int> calculateCurrentStreak(int habitId) async {
-    Database db = await instance.database;
-    // Lấy danh sách ngày hoàn thành của habit, sắp xếp theo thứ tự giảm dần
+    final db = await instance.database;
+
     final List<Map<String, dynamic>> completedDates = await db.query(
       'habit_completed_dates',
       where: 'habitId = ?',
@@ -268,31 +212,272 @@ class DatabaseService {
       orderBy: 'completedDate DESC',
     );
 
-    if (completedDates.isEmpty) {
-      return 0; // Không có ngày hoàn thành, chuỗi = 0
+    if (completedDates.isEmpty) return 0;
+
+    int streak = 1; // Bắt đầu với 1 vì có ít nhất 1 ngày hoàn thành
+    DateTime currentDate = DateTime.now();
+
+    // Sắp xếp các ngày theo thứ tự giảm dần
+    List<DateTime> dates = completedDates
+        .map((record) => DateTime.parse(record['completedDate'] as String))
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    // Kiểm tra ngày gần nhất có phải là hôm nay hoặc hôm qua
+    if (dates.first.difference(currentDate).inDays.abs() > 1) {
+      return 0; // Chuỗi đã bị đứt
     }
 
-    int streak = 0;
-    DateTime? previousDate;
-
-    for (final record in completedDates) {
-      DateTime currentDate = DateTime.parse(record['completedDate']);
-
-      if (previousDate == null || 
-          previousDate.difference(currentDate).inDays == 1) {
-        // Ngày liên tiếp
+    // Đếm số ngày liên tiếp
+    for (int i = 0; i < dates.length - 1; i++) {
+      if (dates[i].difference(dates[i + 1]).inDays == 1) {
         streak++;
-      } else if (previousDate.difference(currentDate).inDays > 1) {
-        // Chuỗi bị ngắt
+      } else {
         break;
       }
-
-      previousDate = currentDate;
     }
-
     return streak;
   }
 
-  
+  Future<int> calculateLongestStreak(int habitId) async {
+    final db = await instance.database;
+
+    final List<Map<String, dynamic>> completedDates = await db.query(
+      'habit_completed_dates',
+      where: 'habitId = ?',
+      whereArgs: [habitId],
+      orderBy: 'completedDate ASC',
+    );
+
+    if (completedDates.isEmpty) return 0;
+
+    int longestStreak = 1;
+    int currentStreak = 1;
+
+    List<DateTime> dates = completedDates
+        .map((record) => DateTime.parse(record['completedDate'] as String))
+        .toList();
+
+    // Tính streak dài nhất
+    for (int i = 0; i < dates.length - 1; i++) {
+      if (dates[i + 1].difference(dates[i]).inDays == 1) {
+        currentStreak++;
+        if (currentStreak > longestStreak) {
+          longestStreak = currentStreak;
+        }
+      } else {
+        currentStreak = 1;
+      }
+    }
+
+    return longestStreak;
+  }
+
+  Future<int> createHabit(Habit habit) async {
+    final db = await database;
+    final id = await db.insert('habits', habit.toMap());
+    if (habit.completedDates.isNotEmpty) {
+      final batch = db.batch();
+      for (var date in habit.completedDates) {
+        batch.insert('habit_completed_dates', {
+          'habitId': id,
+          'completedDate': date.toIso8601String(),
+        });
+      }
+      await batch.commit();
+    }
+    return id;
+  }
+
+  Future<List<Habit>> getHabits(int userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> habitMaps = await db.query(
+      'habits',
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+
+    // Fetch completed dates for each habit
+    return Future.wait(habitMaps.map((habitMap) async {
+      final List<Map<String, dynamic>> datesMaps = await db.query(
+        'habit_completed_dates',
+        columns: ['completedDate'],
+        where: 'habitId = ?',
+        whereArgs: [habitMap['id']],
+      );
+
+      final List<DateTime> completedDates = datesMaps
+          .map((dateMap) => DateTime.parse(dateMap['completedDate'] as String))
+          .toList();
+
+      return Habit.fromMap(habitMap, completedDates);
+    }));
+  }
+
+  Future<Habit?> getHabit(int habitId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habits',
+      where: 'id = ?',
+      whereArgs: [habitId],
+    );
+
+    if (maps.isEmpty) return null;
+
+    final List<Map<String, dynamic>> datesMaps = await db.query(
+      'habit_completed_dates',
+      columns: ['completedDate'],
+      where: 'habitId = ?',
+      whereArgs: [habitId],
+    );
+
+    final List<DateTime> completedDates = datesMaps
+        .map((dateMap) => DateTime.parse(dateMap['completedDate'] as String))
+        .toList();
+
+    return Habit.fromMap(maps.first, completedDates);
+  }
+
+  Future<void> updateHabit(Habit habit) async {
+    final db = await database;
+    await db.update(
+      'habits',
+      habit.toMap(),
+      where: 'id = ?',
+      whereArgs: [habit.id],
+    );
+
+    // Update completed dates
+    await db.delete(
+      'habit_completed_dates',
+      where: 'habitId = ?',
+      whereArgs: [habit.id],
+    );
+
+    if (habit.completedDates.isNotEmpty) {
+      final batch = db.batch();
+      for (var date in habit.completedDates) {
+        batch.insert('habit_completed_dates', {
+          'habitId': habit.id,
+          'completedDate': date.toIso8601String(),
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> deleteHabit(int habitId) async {
+    final db = await database;
+    await db.delete(
+      'habits',
+      where: 'id = ?',
+      whereArgs: [habitId],
+    );
+    // Completed dates will be automatically deleted due to CASCADE
+  }
+
+Future<void> markHabitAsCompleted(int habitId, DateTime date) async {
+  final db = await database;
+
+  // Chỉ lấy ngày, tháng, năm
+  final truncatedDate = DateTime(date.year, date.month, date.day);
+
+  // Lưu vào bảng habit_completed_dates
+  await db.insert('habit_completed_dates', {
+    'habitId': habitId,
+    'completedDate': truncatedDate.toIso8601String().split('T').first,
+  });
+
+  final habit = await getHabit(habitId);
+
+  if (habit != null) {
+    // Cập nhật completedDates trong bảng habits
+    final allCompletedDates = [
+      ...habit.completedDates.map((date) => date.toIso8601String().split('T').first),
+      truncatedDate.toIso8601String().split('T').first
+    ];
+
+    await db.update(
+      'habits',
+      {'completedDates': allCompletedDates.join(',')},
+      where: 'id = ?',
+      whereArgs: [habitId],
+    );
+
+    // Kiểm tra nếu đủ targetDays, đánh dấu là hoàn thành
+    if (allCompletedDates.length >= habit.targetDays) {
+      print('Marking habit as completed');
+      await db.update(
+        'habits',
+        {'isCompleted': 1},
+        where: 'id = ?',
+        whereArgs: [habitId],
+      );
+    }
+  }
+}
+
+
+Future<void> unmarkHabitAsCompleted(int habitId, DateTime date) async {
+  final db = await database;
+
+  // Chỉ lấy ngày, tháng, năm
+  final truncatedDate = DateTime(date.year, date.month, date.day);
+  final dateString = truncatedDate.toIso8601String().split('T').first;
+
+  // Xóa khỏi bảng habit_completed_dates
+  await db.delete(
+    'habit_completed_dates',
+    where: 'habitId = ? AND completedDate = ?',
+    whereArgs: [habitId, dateString],
+  );
+
+  final habit = await getHabit(habitId);
+
+  if (habit != null) {
+    // Cập nhật completedDates trong bảng habits bằng cách loại bỏ ngày đã chọn
+    final updatedCompletedDates = habit.completedDates
+        .map((date) => date.toIso8601String().split('T').first)
+        .where((d) => d != dateString)
+        .toList();
+
+    await db.update(
+      'habits',
+      {'completedDates': updatedCompletedDates.join(',')},
+      where: 'id = ?',
+      whereArgs: [habitId],
+    );
+
+    // Kiểm tra nếu số ngày hoàn thành < targetDays, đánh dấu là chưa hoàn thành
+    if (updatedCompletedDates.length < habit.targetDays) {
+      print('Marking habit as incomplete');
+      await db.update(
+        'habits',
+        {'isCompleted': 0},
+        where: 'id = ?',
+        whereArgs: [habitId], 
+      );
+    }
+  }
+}
+
+  Future<List<DateTime>> getCompletedDates(int habitId) async {
+  final db = await database;
+
+  // Truy vấn bảng habit_completed_dates dựa trên habitId
+  final List<Map<String, dynamic>> result = await db.query(
+    'habit_completed_dates',
+    columns: ['completedDate'], // Chỉ lấy cột completedDate
+    where: 'habitId = ?',
+    whereArgs: [habitId],
+  );
+
+  // Chuyển đổi kết quả thành List<DateTime>
+  final completedDates = result.map((row) {
+    return DateTime.parse(row['completedDate'] as String); // Chuyển thành DateTime
+  }).toList();
+
+  return completedDates; // Trả về danh sách
+}
 
 }
